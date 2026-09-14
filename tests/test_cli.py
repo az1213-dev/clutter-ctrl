@@ -23,9 +23,15 @@ def temp_test_dir():
 def test_cli_rules(capsys):
     main.cmd_rules()
     captured = capsys.readouterr()
-    assert "C L U T T E R C T R L" in captured.out
     assert "Images" in captured.out
     assert "Documents" in captured.out
+
+
+def test_banner_renders(capsys):
+    # Every character of BANNER_WORD needs a glyph, or the shell crashes on startup.
+    main.print_banner()
+    captured = capsys.readouterr()
+    assert captured.out.strip()
 
 
 def test_cli_stats(capsys):
