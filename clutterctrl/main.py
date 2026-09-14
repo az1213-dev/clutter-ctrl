@@ -1,8 +1,13 @@
 import sys
 import os
+import re
+import shlex
+import shutil
 import argparse
 import time
 from typing import Optional, List, Dict, Any
+
+__version__ = "1.0.1"
 
 # Support both direct script execution (python clutterctrl/main.py) and module execution (python -m clutterctrl.main)
 if __package__ is None or __package__ == "":
@@ -14,7 +19,7 @@ if __package__ is None or __package__ == "":
 from . import config
 from .config import DOWNLOADS_DIR, reload_categories, CATEGORY_ORDER, CATEGORY_EXTENSIONS
 from .cleaner import process_directory, deep_scan_directory
-from .helpers import get_available_drives, get_quick_locations, format_bytes
+from .helpers import get_available_drives, format_bytes
 from . import history
 from .watcher import watcher_manager
 
@@ -31,6 +36,219 @@ class Colors:
     BOLD = "\033[1m"
     DIM = "\033[2m"
     RESET = "\033[0m"
+    # Gemini-CLI-style accent used for borders / prompts (soft periwinkle-blue)
+    ACCENT = "\033[38;2;138;180;248m"
+
+
+# Gradient stops lifted from the Gemini CLI banner: blue -> violet -> coral.
+GRADIENT_STOPS = [
+    (66, 133, 244),   # blue
+    (161, 102, 224),  # violet
+    (234, 97, 110),   # coral/pink
+]
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def visible_len(text: str) -> int:
+    """Length of a string on-screen, ignoring ANSI escape sequences."""
+    return len(_ANSI_RE.sub("", text))
+
+
+def _lerp_color(t: float, stops=GRADIENT_STOPS):
+    n = len(stops) - 1
+    seg = min(int(t * n), n - 1)
+    local_t = (t * n) - seg
+    c0, c1 = stops[seg], stops[seg + 1]
+    return tuple(int(c0[i] + (c1[i] - c0[i]) * local_t) for i in range(3))
+
+
+def _darken(rgb, factor: float = 0.38):
+    return tuple(int(v * factor) for v in rgb)
+
+
+def gradient_line(line: str, width: Optional[int] = None) -> str:
+    """Colorize a single line of text with a left-to-right truecolor gradient."""
+    width = width or max(len(line) - 1, 1)
+    out = []
+    for i, ch in enumerate(line):
+        if ch == " ":
+            out.append(ch)
+            continue
+        r, g, b = _lerp_color(i / width)
+        out.append(f"\033[38;2;{r};{g};{b}m{ch}")
+    out.append(Colors.RESET)
+    return "".join(out)
+
+
+def clear_screen():
+    """Clear the terminal for an app-like, redrawn interface (like Gemini CLI)."""
+    if os.getenv("CLUTTERCTRL_NO_CLEAR"):
+        return
+    print("\033[2J\033[H", end="")
+
+
+# --- Block-letter font used for the CLUTTERCTRL logo (5 wide x 6 tall) ---
+_GLYPHS: Dict[str, List[str]] = {
+    "C": ["█████", "██   ", "██   ", "██   ", "██   ", "█████"],
+    "L": ["██   ", "██   ", "██   ", "██   ", "██   ", "█████"],
+    "U": ["██ ██", "██ ██", "██ ██", "██ ██", "██ ██", "█████"],
+    "T": ["█████", " ██  ", " ██  ", " ██  ", " ██  ", " ██  "],
+    "E": ["█████", "██   ", "████ ", "██   ", "██   ", "█████"],
+    "R": ["████ ", "██ ██", "████ ", "██ ██", "██ ██", "██ ██"],
+    # Right-pointing chevron used as the clutterctrl logomark, Gemini-CLI style.
+    ">": ["██   ", " ██  ", "  ██ ", "  ██ ", " ██  ", "██   "],
+    # Separator between the logomark and the wordmark. Narrower than a letter
+    # cell so it does not cost 5 scaled pixels of width.
+    " ": ["  ", "  ", "  ", "  ", "  ", "  "],
+}
+
+
+def _render_glyph_rows(word: str, gap: int = 1, xscale: int = 1) -> List[str]:
+    """Render `word` in the block font, each glyph pixel `xscale` terminal cells wide.
+
+    Terminal cells are about twice as tall as they are wide, so xscale > 1 is what
+    keeps the letterforms from looking vertically stretched.
+    """
+    rows = [""] * 6
+    letters = list(word)
+    for idx, ch in enumerate(letters):
+        glyph = _GLYPHS[ch]
+        for r in range(6):
+            rows[r] += "".join(px * xscale for px in glyph[r])
+            if idx != len(letters) - 1:
+                rows[r] += " " * gap
+    return rows
+
+
+def _composite_glyph_grid(rows: List[str], shadow_dx: int = 1, shadow_dy: int = 1):
+    """Stamp a shadow copy offset down-right, then the front face on top, for a 3D look."""
+    height = len(rows)
+    width = len(rows[0])
+    total_h = height + shadow_dy
+    total_w = width + shadow_dx
+    grid: List[List[Optional[str]]] = [[None] * total_w for _ in range(total_h)]
+
+    for r in range(height):
+        for c in range(width):
+            if rows[r][c] != " ":
+                grid[r + shadow_dy][c + shadow_dx] = "shadow"
+
+    for r in range(height):
+        for c in range(width):
+            if rows[r][c] != " ":
+                grid[r][c] = "front"
+
+    return grid, total_w, total_h
+
+
+BANNER_WORD = "> CLUTTERCTRL"
+BANNER_PIXEL_WIDTH = 4
+
+
+def print_banner(compact: bool = False):
+    """Print the CLUTTERCTRL 3D gradient logo, Gemini-CLI style."""
+    term_width = shutil.get_terminal_size((80, 24)).columns
+
+    # Widest pixel scale that still fits the terminal; +xscale covers the shadow offset.
+    for xscale in range(BANNER_PIXEL_WIDTH, 0, -1):
+        rows = _render_glyph_rows(BANNER_WORD, xscale=xscale)
+        if len(rows[0]) + xscale <= term_width:
+            break
+
+    banner_width = len(rows[0])
+
+    if compact or banner_width + xscale > term_width:
+        # Narrow terminal fallback: single gradient line of plain text.
+        print(gradient_line("CLUTTERCTRL"))
+        print()
+        return
+
+    grid, total_w, total_h = _composite_glyph_grid(rows, shadow_dx=xscale, shadow_dy=1)
+    denom = max(banner_width - 1, 1)
+
+    print()
+    for r in range(total_h):
+        parts = []
+        for col in range(total_w):
+            cell = grid[r][col]
+            if cell is None:
+                parts.append(f"{Colors.RESET} ")
+                continue
+            src_col = col - (xscale if cell == "shadow" else 0)
+            rgb = _lerp_color(min(max(src_col, 0), denom) / denom)
+            if cell == "shadow":
+                rgb = _darken(rgb)
+            rr, gg, bb = rgb
+            # Background fill rather than a "█" glyph: block characters leave
+            # hairline gaps in fonts whose glyph does not fill the whole cell.
+            parts.append(f"\033[48;2;{rr};{gg};{bb}m ")
+        parts.append(Colors.RESET)
+        print("".join(parts))
+    print()
+
+
+COMMANDS: List[tuple] = [
+    ("clean [path] [--deep]", "Organize a folder (default: Downloads)"),
+    ("scan [path] [--deep]", "Preview changes without moving anything"),
+    ("watch [path] [--deep]", "Live-watch a folder and auto-sort new files"),
+    ("history [--limit N]", "Show past organization runs"),
+    ("undo [#]", "Roll back a run — bare 'undo' reverts the latest"),
+    ("stats", "Show lifetime organization statistics"),
+    ("rules", "Show category extension rules"),
+    ("help", "Show this command list"),
+    ("exit", "Quit clutterctrl"),
+]
+
+
+def print_commands():
+    """The single reference section shown in the interactive shell."""
+    c = Colors
+    print(f"{c.BOLD}Commands{c.RESET}")
+    for name, desc in COMMANDS:
+        print(f"  {c.ACCENT}{name.ljust(24)}{c.RESET} {c.DIM}{desc}{c.RESET}")
+    print()
+
+
+def print_hint_row():
+    c = Colors
+    term_width = shutil.get_terminal_size((80, 24)).columns
+    print(f"{c.DIM}{'─' * term_width}{c.RESET}")
+    left = f"{c.DIM}Type a command and press Enter{c.RESET}"
+    right = f"{c.DIM}clutterctrl v{__version__}{c.RESET}"
+    gap = max(term_width - visible_len(left) - visible_len(right), 1)
+    print(f"{left}{' ' * gap}{right}")
+
+
+def print_input_box(prompt: str = "› ") -> str:
+    """A Gemini-CLI-style bordered input line."""
+    c = Colors
+    term_width = shutil.get_terminal_size((80, 24)).columns
+    inner_width = max(term_width - 4, 10)
+    top = f"{c.ACCENT}╭{'─' * (inner_width + 2)}╮{c.RESET}"
+    bottom = f"{c.ACCENT}╰{'─' * (inner_width + 2)}╯{c.RESET}"
+
+    print(top)
+    sys.stdout.write(f"{c.ACCENT}│{c.RESET} {c.ACCENT}{prompt}{c.RESET}")
+    sys.stdout.flush()
+    try:
+        line = input()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        line = "exit"
+    print(bottom)
+    return line.strip()
+
+
+def print_status_bar(context: str = ""):
+    """Footer status line, similar to Gemini CLI's bottom status bar."""
+    c = Colors
+    cwd = os.getcwd()
+    term_width = shutil.get_terminal_size((80, 24)).columns
+    left = f"{c.ACCENT}clutterctrl v{__version__}{c.RESET}"
+    right = f"{c.DIM}{context or cwd}{c.RESET}"
+    gap = max(term_width - visible_len(left) - visible_len(right) - 1, 1)
+    print(f"{left}{' ' * gap}{right}")
 
 
 def init_terminal():
@@ -59,14 +277,6 @@ def init_terminal():
 
 
 init_terminal()
-
-
-def print_banner():
-    c = Colors
-    print(f"{c.CYAN}{c.BOLD}===================================================================={c.RESET}")
-    print(f"{c.CYAN}{c.BOLD}                       C L U T T E R C T R L                        {c.RESET}")
-    print(f"{c.CYAN}{c.BOLD}              Take control of your filesystem order                 {c.RESET}")
-    print(f"{c.CYAN}{c.BOLD}===================================================================={c.RESET}")
 
 
 def confirm(message: str) -> bool:
@@ -104,7 +314,6 @@ def cmd_stats():
     """Display overall run log and lifetime organization statistics."""
     c = Colors
     stats = history.get_stats()
-    print_banner()
     print(f"\n{c.BOLD}[*] System & Run History Statistics{c.RESET}")
     print(f"{c.DIM}Logs location: {stats['log_dir']} ({stats['total_log_files']} run log file(s)){c.RESET}\n")
 
@@ -128,7 +337,6 @@ def cmd_history(limit: int = 20):
     """Display recent run history from individual run log files."""
     c = Colors
     runs = history.get_all_history(limit=limit)
-    print_banner()
     print(f"\n{c.BOLD}[*] Recent Organization Runs (Dedicated Log Files){c.RESET}\n")
 
     headers = ["#", "Run ID", "Date / Time", "Status", "Mode", "Files", "Size", "Target Folder"]
@@ -154,7 +362,7 @@ def cmd_history(limit: int = 20):
         ])
 
     print_table(headers, rows)
-    print(f"\n{c.DIM}To rollback any run: clutterctrl undo <Run ID>{c.RESET}\n")
+    print(f"\n{c.DIM}Roll back with the # column: {c.RESET}{c.ACCENT}undo 1{c.RESET}{c.DIM} reverts the most recent run.{c.RESET}\n")
 
 
 def cmd_undo(run_id_or_index: Optional[str] = None):
@@ -170,11 +378,13 @@ def cmd_undo(run_id_or_index: Optional[str] = None):
         # Check if user passed an index number like '1' or '2'
         if run_id_or_index.isdigit():
             idx = int(run_id_or_index) - 1
-            all_runs = history.get_all_history(limit=50)
+            # Fetch through the requested row so any '#' shown by `history` resolves,
+            # however large a --limit that listing used.
+            all_runs = history.get_all_history(limit=max(idx + 1, 1))
             if 0 <= idx < len(all_runs):
                 target_run = all_runs[idx]
             else:
-                print(f"{c.RED}Invalid run index #{run_id_or_index}.{c.RESET}")
+                print(f"{c.RED}No run #{run_id_or_index} in history. Run 'history' to see the list.{c.RESET}")
                 return
         else:
             target_run = history.get_transaction(run_id_or_index)
@@ -211,7 +421,6 @@ def cmd_scan(target_dir: str, deep: bool = False):
         print(f"{c.RED}Error: Directory not found: {target}{c.RESET}")
         return
 
-    print_banner()
     print(f"\n{c.BOLD}[?] Dry Run Scan Preview:{c.RESET} {c.CYAN}{target}{c.RESET} {'(Deep Scan)' if deep else ''}\n")
 
     fn = deep_scan_directory if deep else process_directory
@@ -252,7 +461,6 @@ def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False):
         print(f"{c.RED}Error: Directory not found: {target}{c.RESET}")
         return
 
-    print_banner()
     print(f"\n{c.BOLD}[+] ClutterCtrl Organizing:{c.RESET} {c.CYAN}{target}{c.RESET} {'(Deep Scan)' if deep else ''}\n")
 
     fn = deep_scan_directory if deep else process_directory
@@ -264,7 +472,7 @@ def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False):
     print(f"  * Log File:          {res.get('log_path', '')}")
     if res.get("removed_dirs"):
         print(f"  * Empty Folders Removed: {len(res['removed_dirs'])}")
-    print(f"\n{c.DIM}To rollback this run anytime: clutterctrl undo {res['run_id']}{c.RESET}\n")
+    print(f"\n{c.DIM}To roll this back, just run {c.RESET}{c.ACCENT}undo{c.RESET}{c.DIM} — it reverts the latest run.{c.RESET}\n")
 
 
 def cmd_watch(target_dir: str, deep: bool = False):
@@ -275,7 +483,6 @@ def cmd_watch(target_dir: str, deep: bool = False):
         print(f"{c.RED}Error: Directory not found: {target}{c.RESET}")
         return
 
-    print_banner()
     print(f"\n{c.BOLD}[*] Active Folder Watcher Started{c.RESET}")
     print(f"  Monitoring Directory: {c.CYAN}{target}{c.RESET}")
     print(f"  Recursive (Deep):     {c.WHITE}{deep}{c.RESET}")
@@ -307,7 +514,6 @@ def cmd_rules():
     """Display current category extension rules."""
     c = Colors
     categories, misc = config.load_categories()
-    print_banner()
     print(f"\n{c.BOLD}[*] Category Extension Mappings{c.RESET} {c.DIM}({config.CATEGORIES_FILE}){c.RESET}\n")
 
     headers = ["Category", "Total Extensions", "Sample Extensions"]
@@ -323,97 +529,8 @@ def cmd_rules():
     print("")
 
 
-def select_target_menu() -> Optional[str]:
-    """Helper menu to select a target path from quick locations or custom input."""
-    c = Colors
-    locs = get_quick_locations()
-    print(f"\n{c.BOLD}Select a Location to Organize:{c.RESET}")
-    for i, loc in enumerate(locs, start=1):
-        print(f"  {c.CYAN}{i}.{c.RESET} {loc['name'].ljust(18)} {c.DIM}({loc['path']}){c.RESET}")
-    print(f"  {c.CYAN}{len(locs) + 1}.{c.RESET} Custom Directory Path...")
-    print(f"  {c.CYAN}0.{c.RESET} Back to Main Menu")
-
-    choice = input(f"\n{c.YELLOW}Choose location (number): {c.RESET}").strip()
-    if choice == "0" or not choice:
-        return None
-
-    try:
-        idx = int(choice) - 1
-        if 0 <= idx < len(locs):
-            return locs[idx]["path"]
-        elif idx == len(locs):
-            custom_path = input(f"{c.YELLOW}Enter full directory path: {c.RESET}").strip()
-            if os.path.isdir(custom_path):
-                return custom_path
-            print(f"{c.RED}Invalid directory path.{c.RESET}")
-            return None
-    except ValueError:
-        pass
-
-    print(f"{c.RED}Invalid selection.{c.RESET}")
-    return None
-
-
-def select_scan_type_menu() -> bool:
-    """Prompt for standard vs deep scan."""
-    c = Colors
-    print(f"\n{c.BOLD}Choose Scan Mode:{c.RESET}")
-    print(f"  {c.CYAN}1.{c.RESET} Standard (Top-level files only)")
-    print(f"  {c.CYAN}2.{c.RESET} Deep Scan (Recursive subfolders + cleanup empty directories)")
-    choice = input(f"{c.YELLOW}Choice [1]: {c.RESET}").strip()
-    return choice == "2"
-
-
-def interactive_menu():
-    """Main interactive terminal loop for Windows CMD / Terminal."""
-    c = Colors
-    while True:
-        print_banner()
-        print(f"  {c.CYAN}1.{c.RESET} [+] Organize / Clean a Folder")
-        print(f"  {c.CYAN}2.{c.RESET} [?] Dry Run Preview (Scan without moving)")
-        print(f"  {c.CYAN}3.{c.RESET} [*] Start Live Background Watcher")
-        print(f"  {c.CYAN}4.{c.RESET} [=] Run History & 1-Click Rollback")
-        print(f"  {c.CYAN}5.{c.RESET} [%] Storage & Lifetime Statistics")
-        print(f"  {c.CYAN}6.{c.RESET} [@] Category Extension Rules")
-        print(f"  {c.CYAN}7.{c.RESET} [X] Exit\n")
-
-        choice = input(f"{c.YELLOW}Select an option [1-7]: {c.RESET}").strip()
-
-        if choice == "1":
-            target = select_target_menu()
-            if target:
-                deep = select_scan_type_menu()
-                cmd_clean(target, deep=deep)
-        elif choice == "2":
-            target = select_target_menu()
-            if target:
-                deep = select_scan_type_menu()
-                cmd_scan(target, deep=deep)
-        elif choice == "3":
-            target = select_target_menu()
-            if target:
-                deep = select_scan_type_menu()
-                cmd_watch(target, deep=deep)
-        elif choice == "4":
-            cmd_history(limit=15)
-            sub_choice = input(f"{c.YELLOW}Enter Run # or Run ID to undo (or press Enter to return): {c.RESET}").strip()
-            if sub_choice:
-                cmd_undo(sub_choice)
-        elif choice == "5":
-            cmd_stats()
-        elif choice == "6":
-            cmd_rules()
-        elif choice in ("7", "8", "q", "exit"):
-            print(f"\n{c.CYAN}Clutter controlled. Goodbye!{c.RESET}\n")
-            break
-        else:
-            print(f"\n{c.RED}Invalid option. Please choose 1-7.{c.RESET}\n")
-
-        input(f"\n{c.DIM}Press Enter to continue...{c.RESET}")
-        print("\n" * 2)
-
-
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argparse parser shared by direct CLI invocation and the interactive shell."""
     parser = argparse.ArgumentParser(
         prog="clutterctrl",
         description="ClutterCtrl: Lightweight File Organizer with Per-Run Audit Logs & Rollback"
@@ -444,7 +561,7 @@ def main():
 
     # undo subcommand
     undo_p = subparsers.add_parser("undo", help="Rollback / undo a specific run")
-    undo_p.add_argument("run_id", nargs="?", default=None, help="Run ID or index # (default: latest active run)")
+    undo_p.add_argument("run_id", nargs="?", default=None, help="Run # from 'history', or a full Run ID (default: latest active run)")
 
     # stats subcommand
     subparsers.add_parser("stats", help="Show storage and lifetime organization statistics")
@@ -461,9 +578,12 @@ def main():
     parser.add_argument("--undo", type=str, help="Undo run ID")
     parser.add_argument("--undo-last", action="store_true", help="Undo last run")
 
-    args = parser.parse_args()
+    return parser
 
-    # Handle Subcommands
+
+def dispatch(args: argparse.Namespace):
+    """Run whichever subcommand / legacy flag combination `args` selects."""
+    c = Colors
     if args.command == "clean":
         cmd_clean(args.target, deep=args.deep, quiet=args.quiet)
     elif args.command == "scan":
@@ -478,8 +598,6 @@ def main():
         cmd_stats()
     elif args.command == "rules":
         cmd_rules()
-
-    # Handle Legacy Flags
     elif args.watch:
         cmd_watch(args.watch, deep=args.deep)
     elif args.undo:
@@ -492,8 +610,58 @@ def main():
         else:
             cmd_scan(args.target, deep=args.deep)
     else:
-        # Launch Interactive Terminal Menu
-        interactive_menu()
+        print(f"{c.YELLOW}Unknown command. Type 'help' to see available commands.{c.RESET}")
+
+
+def interactive_shell():
+    """Gemini-CLI-style interactive shell: banner, a Commands reference, then a live input loop."""
+    c = Colors
+    clear_screen()
+    print_banner()
+    print_commands()
+    print_hint_row()
+    print()
+
+    parser = build_parser()
+
+    while True:
+        line = print_input_box()
+        if not line:
+            print()
+            continue
+
+        lowered = line.lower()
+        if lowered in ("exit", "quit", "q"):
+            print(f"\n{c.CYAN}Clutter controlled. Goodbye!{c.RESET}\n")
+            break
+        if lowered in ("help", "?"):
+            print()
+            print_commands()
+            continue
+
+        try:
+            args = parser.parse_args(shlex.split(line))
+        except SystemExit:
+            print()
+            continue
+        except ValueError as e:
+            print(f"{c.RED}Error parsing command: {e}{c.RESET}\n")
+            continue
+
+        print()
+        dispatch(args)
+        print_status_bar()
+        print()
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.command is None and not any([args.watch, args.undo, args.undo_last, args.target]):
+        interactive_shell()
+    else:
+        dispatch(args)
 
 
 if __name__ == "__main__":
