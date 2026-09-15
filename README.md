@@ -1,10 +1,12 @@
-# ClutterCtrl
+<p align="center">
+  <img src="assets/terminal-header.svg" alt="ClutterCtrl — take control of your filesystem clutter" width="100%" />
+</p>
 
 <p align="left">
-  <a href="https://www.python.org"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License: MIT" /></a>
+  <a href="https://www.python.org"><img src="https://img.shields.io/badge/Python-3.9+-4285F4.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-A166E0.svg?style=flat-square" alt="License: MIT" /></a>
   <a href="https://github.com/az1213-dev/clutter-ctrl/actions"><img src="https://img.shields.io/github/actions/workflow/status/az1213-dev/clutter-ctrl/ci.yml?style=flat-square&label=CI" alt="CI Status" /></a>
-  <a href="pyproject.toml"><img src="https://img.shields.io/badge/Dependencies-0%20Mandatory-brightgreen.svg?style=flat-square" alt="Zero Mandatory Dependencies" /></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/Dependencies-0%20Mandatory-EA616E.svg?style=flat-square" alt="Zero Mandatory Dependencies" /></a>
 </p>
 
 A fast, lightweight terminal file organizer. It cleans up cluttered folders (like your Downloads or Desktop), sorts files into organized directories by type, lets you preview changes before touching anything, and keeps a dedicated log of every run so you can undo changes with a single command.
@@ -13,11 +15,11 @@ Written in pure Python with standard library modules, so you can run it immediat
 
 ---
 
-## <img src="https://api.iconify.design/lucide:sparkles.svg?color=%2306b6d4" width="20" height="20" align="center" /> Features
+## <img src="https://api.iconify.design/lucide:sparkles.svg?color=%234285F4" width="20" height="20" align="center" /> Features
 
 - **Zero-Dependency CLI**: Runs directly in Windows Command Prompt, PowerShell, macOS Terminal, or Linux using standard Python.
 - **Dedicated Run Logs**: Every organization run creates its own log file (`run_YYYY-MM-DD_HH-MM-SS_<id>.log`) recording the exact before and after paths for every file moved.
-- **1-Click Undo**: Revert any previous run instantly via `clutterctrl undo <Run ID>` or through the interactive menu.
+- **1-Click Undo**: Revert any previous run instantly with `clutterctrl undo` for the latest run, or `clutterctrl undo <#>` using the number shown by `clutterctrl history`.
 - **Dry Run Previews**: Check file lists, categories, destination paths, and sizes in a clean table before anything gets moved.
 - **Background Folder Watcher**: Optionally watch folders like Downloads to auto-sort new files as they arrive, with built-in debounce so it never touches partial downloads.
 - **Standard and Deep Scans**: Choose between organizing top-level files or scanning entire folder trees recursively while cleaning up empty folders.
@@ -30,7 +32,7 @@ Written in pure Python with standard library modules, so you can run it immediat
 
 ---
 
-## <img src="https://api.iconify.design/lucide:terminal.svg?color=%2306b6d4" width="20" height="20" align="center" /> Quickstart
+## <img src="https://api.iconify.design/lucide:terminal.svg?color=%236878EC" width="20" height="20" align="center" /> Quickstart
 
 ### 1. Run Directly (No Setup Needed)
 You can clone the repo and run ClutterCtrl right away:
@@ -57,12 +59,12 @@ Now you can run `clutterctrl` from any directory.
 
 ---
 
-## <img src="https://api.iconify.design/lucide:command.svg?color=%2306b6d4" width="20" height="20" align="center" /> CLI Commands
+## <img src="https://api.iconify.design/lucide:command.svg?color=%238E6CE4" width="20" height="20" align="center" /> CLI Commands
 
-You can run ClutterCtrl with subcommands or launch the interactive menu by running `clutterctrl` with no arguments:
+You can run ClutterCtrl with subcommands, or launch the interactive shell by running `clutterctrl` with no arguments:
 
 ```bash
-# Open the interactive terminal menu
+# Open the interactive shell
 clutterctrl
 
 # Preview what will be moved in Downloads without changing anything
@@ -86,6 +88,9 @@ clutterctrl history
 # Undo the most recent run
 clutterctrl undo
 
+# Undo a run by the # shown in history
+clutterctrl undo 2
+
 # Undo a specific run by ID
 clutterctrl undo run_2026-08-31_13-52-17_aad725
 
@@ -96,9 +101,13 @@ clutterctrl stats
 clutterctrl rules
 ```
 
+### Interactive Shell
+
+Running `clutterctrl` with no arguments opens the shell shown at the top of this page. It accepts the same commands you would type on the command line — `clean`, `scan`, `watch`, `history`, `undo`, `stats`, `rules` — plus `help` to reprint the command list and `exit` to quit.
+
 ---
 
-## <img src="https://api.iconify.design/lucide:file-text.svg?color=%2306b6d4" width="20" height="20" align="center" /> Run Logs and Undo
+## <img src="https://api.iconify.design/lucide:file-text.svg?color=%23AF65C9" width="20" height="20" align="center" /> Run Logs and Undo
 
 ClutterCtrl creates a dedicated log file for every run inside the repository:
 - **Log Path**: `clutterctrl/logs/run_*.log`
@@ -129,7 +138,7 @@ When you undo a run, ClutterCtrl reads the operations in reverse, puts all files
 
 ---
 
-## <img src="https://api.iconify.design/lucide:flask-conical.svg?color=%2306b6d4" width="20" height="20" align="center" /> Running Tests
+## <img src="https://api.iconify.design/lucide:flask-conical.svg?color=%23CC639B" width="20" height="20" align="center" /> Running Tests
 
 You can run the test suite with `pytest`:
 
@@ -139,6 +148,6 @@ pytest -v
 
 ---
 
-## <img src="https://api.iconify.design/lucide:scale.svg?color=%2306b6d4" width="20" height="20" align="center" /> License
+## <img src="https://api.iconify.design/lucide:scale.svg?color=%23EA616E" width="20" height="20" align="center" /> License
 
 This project is open source and available under the MIT License. See [LICENSE](LICENSE) for details.
