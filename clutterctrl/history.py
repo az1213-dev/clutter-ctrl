@@ -45,7 +45,7 @@ def get_log_path(run_id: str) -> str:
     return direct_path
 
 
-def start_transaction(target_dir: str = "", deep: bool = False, mode: str = "clean", log_path: Optional[str] = None, run_id: Optional[str] = None) -> str:
+def start_transaction(target_dir: str = "", deep: bool = False, mode: str = "clean", run_id: Optional[str] = None) -> str:
     """
     Start a new run by creating a unique dedicated log file for this run.
     Returns the unique run_id.
@@ -127,6 +127,7 @@ def parse_log_file(filepath: str) -> Optional[Dict[str, Any]]:
     moves = []
     removed_dirs = []
     categories = {cat: 0 for cat in config.CATEGORY_ORDER}
+    category_bytes = {cat: 0 for cat in config.CATEGORY_ORDER}
 
     for line in content.splitlines():
         line_str = line.strip()
@@ -181,6 +182,7 @@ def parse_log_file(filepath: str) -> Optional[Dict[str, Any]]:
 
                 total_bytes += file_size
                 categories[category] = categories.get(category, 0) + 1
+                category_bytes[category] = category_bytes.get(category, 0) + file_size
                 moves.append({
                     "id": len(moves) + 1,
                     "src": src,
@@ -220,6 +222,7 @@ def parse_log_file(filepath: str) -> Optional[Dict[str, Any]]:
         "total_bytes": total_bytes,
         "total_bytes_formatted": helpers.format_bytes(total_bytes),
         "categories": categories,
+        "category_bytes": category_bytes,
         "moves": moves,
         "removed_dirs": removed_dirs,
         "undone": undone,
@@ -344,11 +347,13 @@ def get_stats() -> Dict[str, Any]:
     category_counts = {}
     for r in runs:
         if not r["undone"]:
+            run_bytes = r.get("category_bytes", {})
             for cat, cnt in r.get("categories", {}).items():
                 if cnt > 0:
                     if cat not in category_counts:
                         category_counts[cat] = {"count": 0, "bytes": 0}
                     category_counts[cat]["count"] += cnt
+                    category_counts[cat]["bytes"] += run_bytes.get(cat, 0)
 
     for cat_data in category_counts.values():
         cat_data["bytes_formatted"] = helpers.format_bytes(cat_data["bytes"])

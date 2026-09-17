@@ -5,9 +5,7 @@ import shlex
 import shutil
 import argparse
 import time
-from typing import Optional, List, Dict, Any
-
-__version__ = "1.0.1"
+from typing import Optional, List, Dict
 
 # Support both direct script execution (python clutterctrl/main.py) and module execution (python -m clutterctrl.main)
 if __package__ is None or __package__ == "":
@@ -17,11 +15,11 @@ if __package__ is None or __package__ == "":
     __package__ = "clutterctrl"
 
 from . import config
-from .config import DOWNLOADS_DIR, reload_categories, CATEGORY_ORDER, CATEGORY_EXTENSIONS
+from .config import DOWNLOADS_DIR
 from .cleaner import process_directory, deep_scan_directory
-from .helpers import get_available_drives, format_bytes
 from . import history
 from .watcher import watcher_manager
+from . import __version__
 
 
 # --- Terminal Colors & VT100 Setup ---
@@ -189,13 +187,13 @@ def print_banner(compact: bool = False):
 
 
 COMMANDS: List[tuple] = [
-    ("clean [path] [--deep]", "Organize a folder (default: Downloads)"),
-    ("scan [path] [--deep]", "Preview changes without moving anything"),
-    ("watch [path] [--deep]", "Live-watch a folder and auto-sort new files"),
+    ("clean [path] [--deep] [-s]", "Organize a folder (default: Downloads)"),
+    ("scan [path] [--deep] [-s]", "Preview changes without moving anything"),
+    ("watch [path] [--deep] [-s]", "Live-watch a folder and auto-sort new files"),
     ("history [--limit N]", "Show past organization runs"),
     ("undo [#]", "Roll back a run — bare 'undo' reverts the latest"),
     ("stats", "Show lifetime organization statistics"),
-    ("rules", "Show category extension rules"),
+    ("rules", "Show category + subfolder extension rules"),
     ("help", "Show this command list"),
     ("exit", "Quit clutterctrl"),
 ]
@@ -413,7 +411,13 @@ def cmd_undo(run_id_or_index: Optional[str] = None):
                 print(f"  {c.RED}- {err}{c.RESET}")
 
 
-def cmd_scan(target_dir: str, deep: bool = False):
+def dest_label(target: str, file_info: dict) -> str:
+    """Destination shown in the scan table: 'Documents' or 'Documents/Spreadsheets'."""
+    rel = os.path.relpath(file_info["dest_dir"], target)
+    return rel.replace(os.sep, "/")
+
+
+def cmd_scan(target_dir: str, deep: bool = False, subfolders: Optional[bool] = None):
     """Run a dry run scan and print a visual preview table."""
     c = Colors
     target = os.path.abspath(target_dir)
@@ -424,7 +428,7 @@ def cmd_scan(target_dir: str, deep: bool = False):
     print(f"\n{c.BOLD}[?] Dry Run Scan Preview:{c.RESET} {c.CYAN}{target}{c.RESET} {'(Deep Scan)' if deep else ''}\n")
 
     fn = deep_scan_directory if deep else process_directory
-    res = fn(target, dry_run=True, quiet=True)
+    res = fn(target, dry_run=True, quiet=True, subfolders=subfolders)
 
     files = res.get("files", [])
     if not files:
@@ -439,7 +443,7 @@ def cmd_scan(target_dir: str, deep: bool = False):
             f["name"] if len(f["name"]) <= 30 else f["name"][:27] + "...",
             f["category"],
             f["size_formatted"],
-            os.path.basename(f["dest_dir"])
+            dest_label(target, f)
         ])
 
     print_table(headers, rows)
@@ -450,10 +454,11 @@ def cmd_scan(target_dir: str, deep: bool = False):
     for cat, cnt in res["counts"].items():
         if cnt > 0:
             print(f"  * {cat.ljust(15)}: {cnt}")
-    print(f"\n{c.DIM}To execute this cleanup: clutterctrl clean \"{target}\"{' --deep' if deep else ''}{c.RESET}\n")
+    hint_flags = f"{' --deep' if deep else ''}{' --subfolders' if res.get('subfolders') else ''}"
+    print(f"\n{c.DIM}To execute this cleanup: clutterctrl clean \"{target}\"{hint_flags}{c.RESET}\n")
 
 
-def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False):
+def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False, subfolders: Optional[bool] = None):
     """Execute live file organization and record into dedicated run log file."""
     c = Colors
     target = os.path.abspath(target_dir)
@@ -464,10 +469,12 @@ def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False):
     print(f"\n{c.BOLD}[+] ClutterCtrl Organizing:{c.RESET} {c.CYAN}{target}{c.RESET} {'(Deep Scan)' if deep else ''}\n")
 
     fn = deep_scan_directory if deep else process_directory
-    res = fn(target, dry_run=False, quiet=quiet)
+    res = fn(target, dry_run=False, quiet=quiet, subfolders=subfolders)
 
     print(f"\n{c.GREEN}[OK] Organization Complete!{c.RESET}")
     print(f"  * Total Files Moved: {c.BOLD}{res['total_files']}{c.RESET} ({res['total_bytes_formatted']})")
+    if res.get("subfolders"):
+        print(f"  * Layout:            {c.CYAN}Category / Subfolder{c.RESET}")
     print(f"  * Run ID:            {c.CYAN}{res['run_id']}{c.RESET}")
     print(f"  * Log File:          {res.get('log_path', '')}")
     if res.get("removed_dirs"):
@@ -475,7 +482,7 @@ def cmd_clean(target_dir: str, deep: bool = False, quiet: bool = False):
     print(f"\n{c.DIM}To roll this back, just run {c.RESET}{c.ACCENT}undo{c.RESET}{c.DIM} — it reverts the latest run.{c.RESET}\n")
 
 
-def cmd_watch(target_dir: str, deep: bool = False):
+def cmd_watch(target_dir: str, deep: bool = False, subfolders: Optional[bool] = None):
     """Start background folder watcher in the terminal."""
     c = Colors
     target = os.path.abspath(target_dir)
@@ -496,7 +503,7 @@ def cmd_watch(target_dir: str, deep: bool = False):
         elif event["type"] == "watchdog_error":
             print(f"{c.RED}[ERROR]{c.RESET} {event['file']}: {event['error']}")
 
-    success, msg = watcher_manager.start(target, deep=deep, event_callback=on_event)
+    success, msg = watcher_manager.start(target, deep=deep, event_callback=on_event, subfolders=subfolders)
     if not success:
         print(f"{c.RED}Error: {msg}{c.RESET}")
         return
@@ -513,7 +520,7 @@ def cmd_watch(target_dir: str, deep: bool = False):
 def cmd_rules():
     """Display current category extension rules."""
     c = Colors
-    categories, misc = config.load_categories()
+    categories, misc, subcategories, _ = config.load_categories()
     print(f"\n{c.BOLD}[*] Category Extension Mappings{c.RESET} {c.DIM}({config.CATEGORIES_FILE}){c.RESET}\n")
 
     headers = ["Category", "Total Extensions", "Sample Extensions"]
@@ -526,7 +533,34 @@ def cmd_rules():
     rows.append([misc, "-", "Any unrecognized extensions"])
 
     print_table(headers, rows)
-    print("")
+
+    state = "on by default" if config.SUBFOLDERS_ENABLED else "off by default"
+    print(f"\n{c.BOLD}[*] Subfolder Rules{c.RESET} {c.DIM}(--subfolders / -s; currently {state}){c.RESET}\n")
+
+    sub_rows = []
+    for cat_name, subs in subcategories.items():
+        for sub_name, exts in subs.items():
+            sample = ", ".join(exts[:6])
+            if len(exts) > 6:
+                sample += f" ... (+{len(exts) - 6} more)"
+            sub_rows.append([cat_name, sub_name, str(len(exts)), sample])
+
+    print_table(["Category", "Subfolder", "Extensions", "Sample Extensions"], sub_rows)
+    print(f"\n  {c.DIM}Extensions with no rule get a folder named after the extension "
+          f"(e.g. Misc/XYZ for 'notes.xyz').{c.RESET}\n")
+
+
+def _add_subfolder_flags(sub_parser: argparse.ArgumentParser):
+    """--subfolders / --no-subfolders on a subcommand.
+
+    Left as None when neither is passed so the categories.json /
+    CLUTTERCTRL_SUBFOLDERS default decides.
+    """
+    group = sub_parser.add_mutually_exclusive_group()
+    group.add_argument("--subfolders", "-s", dest="subfolders", action="store_true", default=None,
+                       help="Also split each category into per-extension subfolders")
+    group.add_argument("--no-subfolders", dest="subfolders", action="store_false",
+                       help="Force the flat category layout")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -544,16 +578,19 @@ def build_parser() -> argparse.ArgumentParser:
     clean_p.add_argument("target", nargs="?", default=DOWNLOADS_DIR, help="Target folder (default: Downloads)")
     clean_p.add_argument("--deep", "-d", action="store_true", help="Recursive deep scan")
     clean_p.add_argument("--quiet", "-q", action="store_true", help="Summary output only")
+    _add_subfolder_flags(clean_p)
 
     # scan / dry-run subcommand
     scan_p = subparsers.add_parser("scan", help="Preview organization without moving files")
     scan_p.add_argument("target", nargs="?", default=DOWNLOADS_DIR, help="Target folder (default: Downloads)")
     scan_p.add_argument("--deep", "-d", action="store_true", help="Recursive deep scan")
+    _add_subfolder_flags(scan_p)
 
     # watch subcommand
     watch_p = subparsers.add_parser("watch", help="Watch folder for new files and auto-sort")
     watch_p.add_argument("target", nargs="?", default=DOWNLOADS_DIR, help="Target folder (default: Downloads)")
     watch_p.add_argument("--deep", "-d", action="store_true", help="Recursive deep scan")
+    _add_subfolder_flags(watch_p)
 
     # history subcommand
     hist_p = subparsers.add_parser("history", help="List past organization runs from log files")
@@ -574,6 +611,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clean", action="store_true", help="Clean immediately")
     parser.add_argument("--dry-run", action="store_true", help="Dry run preview")
     parser.add_argument("--deep", action="store_true", help="Recursive deep scan")
+    # Separate dest so it can't clash with the subcommand-level --subfolders flag.
+    parser.add_argument("--subfolders", dest="legacy_subfolders", action="store_true", default=None,
+                        help="Per-extension subfolders inside each category folder")
     parser.add_argument("--watch", "-w", type=str, help="Watch directory")
     parser.add_argument("--undo", type=str, help="Undo run ID")
     parser.add_argument("--undo-last", action="store_true", help="Undo last run")
@@ -585,11 +625,11 @@ def dispatch(args: argparse.Namespace):
     """Run whichever subcommand / legacy flag combination `args` selects."""
     c = Colors
     if args.command == "clean":
-        cmd_clean(args.target, deep=args.deep, quiet=args.quiet)
+        cmd_clean(args.target, deep=args.deep, quiet=args.quiet, subfolders=args.subfolders)
     elif args.command == "scan":
-        cmd_scan(args.target, deep=args.deep)
+        cmd_scan(args.target, deep=args.deep, subfolders=args.subfolders)
     elif args.command == "watch":
-        cmd_watch(args.target, deep=args.deep)
+        cmd_watch(args.target, deep=args.deep, subfolders=args.subfolders)
     elif args.command == "history":
         cmd_history(limit=args.limit)
     elif args.command == "undo":
@@ -599,16 +639,16 @@ def dispatch(args: argparse.Namespace):
     elif args.command == "rules":
         cmd_rules()
     elif args.watch:
-        cmd_watch(args.watch, deep=args.deep)
+        cmd_watch(args.watch, deep=args.deep, subfolders=args.legacy_subfolders)
     elif args.undo:
         cmd_undo(args.undo)
     elif args.undo_last:
         cmd_undo(None)
     elif args.target:
         if args.clean:
-            cmd_clean(args.target, deep=args.deep)
+            cmd_clean(args.target, deep=args.deep, subfolders=args.legacy_subfolders)
         else:
-            cmd_scan(args.target, deep=args.deep)
+            cmd_scan(args.target, deep=args.deep, subfolders=args.legacy_subfolders)
     else:
         print(f"{c.YELLOW}Unknown command. Type 'help' to see available commands.{c.RESET}")
 

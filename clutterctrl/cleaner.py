@@ -4,10 +4,9 @@ from os.path import splitext, join
 from shutil import move
 
 from . import config
-from . import helpers
 from .helpers import ensure_dir, make_unique, get_dest, get_category, format_bytes
 from . import history
-from .logger import start_log, write_log
+from .logger import write_log
 
 def is_category_folder(name):
     """True if a folder name matches one of our own category folders
@@ -17,16 +16,45 @@ def is_category_folder(name):
     return name in config.CATEGORY_ORDER
 
 
-def process_directory(source_dir, dry_run=False, quiet=False, event_callback=None):
+def is_inside_category_folder(path, root):
+    """True if any folder between root and path is one of our category folders.
+
+    Category folders hold our own output - including the per-extension
+    subfolders created with subfolders=True - so nothing under them may be
+    descended into, moved again, or deleted as 'empty'.
+    """
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        # Different drives on Windows: definitely not under root.
+        return False
+
+    if rel == os.curdir:
+        return False
+
+    return any(is_category_folder(part) for part in rel.split(os.sep))
+
+
+def resolve_subfolders(subfolders):
+    """None means 'use the configured default' (categories.json / env var)."""
+    if subfolders is None:
+        return bool(config.SUBFOLDERS_ENABLED)
+    return bool(subfolders)
+
+
+def process_directory(source_dir, dry_run=False, quiet=False, event_callback=None, subfolders=None):
     """
     Scan source_dir and sort files into category subfolders.
 
     dry_run=True       -> report what would happen, move nothing.
     quiet=True         -> suppress per-file console lines, only print final summary (Summary Only mode).
     event_callback     -> callable(event_dict) for real-time streaming (WebSockets/UI).
+    subfolders         -> True/False to force per-extension subfolders inside each
+                          category folder; None uses the configured default.
 
     Returns a dict with summary metrics and file details.
     """
+    use_subfolders = resolve_subfolders(subfolders)
     mode = "Dry Run" if dry_run else "Cleaning"
     if quiet:
         mode = "Summary Only"
@@ -81,7 +109,7 @@ def process_directory(source_dir, dry_run=False, quiet=False, event_callback=Non
                     file_size = 0
 
                 category = get_category(ext)
-                dest_dir = get_dest(ext, source_dir)
+                dest_dir = get_dest(ext, source_dir, subfolders=use_subfolders)
                 dest_file_path = join(dest_dir, entry.name)
 
                 counts[category] += 1
@@ -93,6 +121,7 @@ def process_directory(source_dir, dry_run=False, quiet=False, event_callback=Non
                     "dest_dir": dest_dir,
                     "dest_path": dest_file_path,
                     "category": category,
+                    "subcategory": os.path.basename(dest_dir) if use_subfolders else None,
                     "extension": ext,
                     "size": file_size,
                     "size_formatted": format_bytes(file_size),
@@ -212,6 +241,7 @@ def process_directory(source_dir, dry_run=False, quiet=False, event_callback=Non
         "dry_run": dry_run,
         "quiet": quiet,
         "deep": False,
+        "subfolders": use_subfolders,
         "target": source_dir,
         "total_files": total,
         "total_bytes": total_bytes,
@@ -259,12 +289,6 @@ def process_directory(source_dir, dry_run=False, quiet=False, event_callback=Non
     return summary_result
 
 
-def summary_count(source_dir):
-    """Report-only pass: same scan logic, no files moved, no per-file lines."""
-    res = process_directory(source_dir, dry_run=True, quiet=True)
-    return res["counts"]
-
-
 def cleanup_empty_dirs(source_dir, log_path=None, run_id=None, event_callback=None):
     """
     Walk source_dir bottom-up and remove any subfolder left empty,
@@ -277,7 +301,7 @@ def cleanup_empty_dirs(source_dir, log_path=None, run_id=None, event_callback=No
             continue
 
         name = os.path.basename(dirpath)
-        if is_category_folder(name):
+        if is_category_folder(name) or is_inside_category_folder(dirpath, source_dir):
             continue
 
         try:
@@ -321,7 +345,7 @@ def preview_empty_dirs(source_dir):
             continue
 
         name = os.path.basename(dirpath)
-        if is_category_folder(name):
+        if is_category_folder(name) or is_inside_category_folder(dirpath, source_dir):
             continue
 
         remaining_files = [f for f in filenames if not splitext(f)[1]]
@@ -337,11 +361,14 @@ def preview_empty_dirs(source_dir):
     return would_remove
 
 
-def deep_scan_directory(source_dir, dry_run=False, quiet=False, event_callback=None):
+def deep_scan_directory(source_dir, dry_run=False, quiet=False, event_callback=None, subfolders=None):
     """
     Recursively scan every subfolder of source_dir and sort files into
     the top-level category folders.
+
+    subfolders behaves exactly as in process_directory.
     """
+    use_subfolders = resolve_subfolders(subfolders)
     mode = "Dry Run (Deep Scan)" if dry_run else "Deep Scan"
     if quiet:
         mode = "Summary Only (Deep Scan)"
@@ -396,7 +423,7 @@ def deep_scan_directory(source_dir, dry_run=False, quiet=False, event_callback=N
                     file_size = 0
 
                 category = get_category(ext)
-                dest_dir = get_dest(ext, source_dir)
+                dest_dir = get_dest(ext, source_dir, subfolders=use_subfolders)
                 dest_file_path = join(dest_dir, filename)
 
                 counts[category] += 1
@@ -408,6 +435,7 @@ def deep_scan_directory(source_dir, dry_run=False, quiet=False, event_callback=N
                     "dest_dir": dest_dir,
                     "dest_path": dest_file_path,
                     "category": category,
+                    "subcategory": os.path.basename(dest_dir) if use_subfolders else None,
                     "extension": ext,
                     "size": file_size,
                     "size_formatted": format_bytes(file_size),
@@ -535,6 +563,7 @@ def deep_scan_directory(source_dir, dry_run=False, quiet=False, event_callback=N
         "dry_run": dry_run,
         "quiet": quiet,
         "deep": True,
+        "subfolders": use_subfolders,
         "target": source_dir,
         "total_files": total,
         "total_bytes": total_bytes,

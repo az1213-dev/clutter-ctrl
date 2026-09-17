@@ -23,6 +23,7 @@ Written in pure Python with standard library modules, so you can run it immediat
 - **Dry Run Previews**: Check file lists, categories, destination paths, and sizes in a clean table before anything gets moved.
 - **Background Folder Watcher**: Optionally watch folders like Downloads to auto-sort new files as they arrive, with built-in debounce so it never touches partial downloads.
 - **Standard and Deep Scans**: Choose between organizing top-level files or scanning entire folder trees recursively while cleaning up empty folders.
+- **Per-Extension Subfolders**: Add `--subfolders` (`-s`) to split each category one level deeper — `Documents/Spreadsheets`, `Documents/Word`, `Documents/PDFs`, `Images/Photos`, `Images/Raw` — using rules you control in `categories.json`.
 - **Safe Renaming**: Never overwrites existing files. If a file with the same name exists, it automatically adds a counter (like `photo_1.png`).
 - **Stats & History**: View your past runs and see a visual bar chart of how your storage is organized across categories.
 
@@ -100,6 +101,41 @@ clutterctrl stats
 # View extension mapping rules
 clutterctrl rules
 ```
+
+### Per-Extension Subfolders
+
+By default every file lands in a flat category folder. Add `--subfolders` (or `-s`) to split each
+category one level deeper, so a crowded `Documents` folder becomes browsable:
+
+```bash
+clutterctrl scan "C:\Users\Username\Downloads" --subfolders
+clutterctrl clean "C:\Users\Username\Downloads" --subfolders
+clutterctrl watch "C:\Users\Username\Downloads" --subfolders
+```
+
+```
+Downloads/
+├── Documents/
+│   ├── PDFs/            manual.pdf
+│   ├── Word/            letter.docx
+│   ├── Spreadsheets/    budget.xlsx  export.csv
+│   ├── Presentations/   slides.pptx
+│   └── Text_And_Notes/  notes.txt
+├── Images/
+│   ├── Photos/          holiday.png
+│   └── Raw/             DSC_0001.nef
+└── Misc/
+    └── XYZ/             unknown.xyz
+```
+
+The groupings live in the `subcategories` block of `categories.json`, so you can rename or regroup
+them however you like. Any extension without a rule gets a folder named after the extension itself
+(`.xyz` → `XYZ`), so nothing is ever left loose. To make subfolders the permanent default, set
+`"subfolders_enabled": true` in `categories.json` or export `CLUTTERCTRL_SUBFOLDERS=1`; pass
+`--no-subfolders` to force the flat layout for a single run.
+
+Undo works exactly the same either way — run logs record full source and destination paths, so
+`clutterctrl undo` restores files from subfolders back to where they started.
 
 ### Interactive Shell
 

@@ -1,20 +1,10 @@
 import os
 import uuid
-import logging
 from datetime import datetime
 
 from . import config
 
 LOG_DIR = config.LOG_DIR
-
-# Configure console stream logger
-logger = logging.getLogger("clutterctrl")
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("[%(levelname)s] %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(getattr(logging, getattr(config, "LOG_LEVEL", "INFO"), logging.INFO))
 
 
 def prune_old_logs(max_files=None):

@@ -1,61 +1,7 @@
 import os
-import platform
-import string
 from os.path import splitext, exists, join
 
 from . import config
-
-
-def get_available_drives():
-    """
-    Return a list of available drive/mount roots to choose from.
-
-    On Windows: queries GetLogicalDrives() and returns things like
-    ['C:\\', 'D:\\', 'T:\\'] for every drive letter currently in use
-    (local disks, removable drives, and mapped network drives).
-
-    On macOS/Linux: falls back to '/' plus anything mounted under
-    '/mnt' or '/Volumes', since there's no drive-letter concept there.
-    """
-    drives = []
-
-    if platform.system() == "Windows":
-        import ctypes
-
-        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
-        for i, letter in enumerate(string.ascii_uppercase):
-            if bitmask & (1 << i):
-                drives.append(letter + ":\\")
-    else:
-        candidates = ["/"]
-        for mount_root in ("/mnt", "/Volumes"):
-            if os.path.isdir(mount_root):
-                candidates += [
-                    join(mount_root, name) for name in os.listdir(mount_root)
-                ]
-        drives = [d for d in candidates if os.path.isdir(d)]
-
-    return drives
-
-
-def get_quick_locations():
-    """Return common user folders and drives as key-value pairs."""
-    locs = [
-        {"name": "Downloads", "path": config.DOWNLOADS_DIR},
-        {"name": "Desktop", "path": config.DESKTOP_DIR},
-        {"name": "Documents", "path": config.DOCUMENTS_DIR},
-        {"name": "Pictures", "path": config.PICTURES_DIR},
-        {"name": "Videos", "path": config.VIDEOS_DIR},
-        {"name": "Music", "path": config.MUSIC_DIR},
-    ]
-    # Filter only existing directories
-    existing = [l for l in locs if os.path.isdir(l["path"])]
-    
-    # Add drives
-    for d in get_available_drives():
-        existing.append({"name": "Drive (" + str(d) + ")", "path": d})
-
-    return existing
 
 
 def format_bytes(size_bytes):
@@ -101,10 +47,43 @@ def get_category(extension):
     return config.MISC_CATEGORY
 
 
-def get_dest(extension, base_dir):
+def extension_folder_name(extension):
+    """Fallback subfolder name for an extension with no subcategory rule.
+
+    '.xyz' -> 'XYZ'. Anything that isn't alphanumeric is dropped so the name
+    is always safe to create on Windows, macOS and Linux alike.
+    """
+    cleaned = "".join(ch for ch in extension.lstrip(".") if ch.isalnum())
+    return cleaned.upper() if cleaned else "Other"
+
+
+def get_subcategory(extension):
+    """Map an extension to the subfolder it belongs in, e.g. '.xlsx' -> 'Spreadsheets'.
+
+    Rules come from the "subcategories" block of categories.json, keyed by
+    category. Extensions with no rule fall back to a folder named after the
+    extension itself ('.heic' -> 'HEIC'), so every file still lands somewhere
+    predictable instead of piling up loose in the category folder.
+    """
+    ext = extension.lower()
+    category = get_category(ext)
+
+    for sub_name, extensions in config.SUBCATEGORY_EXTENSIONS.get(category, {}).items():
+        if ext in extensions:
+            return sub_name
+
+    return extension_folder_name(ext)
+
+
+def get_dest(extension, base_dir, subfolders=False):
     """
     Return the destination folder for a file with this extension,
     rooted under base_dir (works for both SOURCE_DIR and DOWNLOADS_DIR).
+
+    subfolders=True adds a second level inside the category folder,
+    e.g. <base>/Documents/Spreadsheets instead of <base>/Documents.
     """
     category = get_category(extension)
+    if subfolders:
+        return os.path.join(base_dir, category, get_subcategory(extension))
     return os.path.join(base_dir, category)

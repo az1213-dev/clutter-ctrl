@@ -16,19 +16,19 @@ except ImportError:
 
 from . import config
 from .helpers import ensure_dir, make_unique, get_dest, get_category, format_bytes
-from .cleaner import is_category_folder
+from .cleaner import is_category_folder, is_inside_category_folder, resolve_subfolders
 from . import history
-from .logger import start_log, write_log
 
 IGNORE_EXTENSIONS = {".tmp", ".crdownload", ".part", ".download", ".partial", ".swp"}
 IGNORE_PREFIXES = {"~$", ".", "#"}
 
 
 class OrganizeEventHandler(FileSystemEventHandler):
-    def __init__(self, watch_dir, deep=False, event_callback=None, debounce_secs=None):
+    def __init__(self, watch_dir, deep=False, event_callback=None, debounce_secs=None, subfolders=None):
         super().__init__()
         self.watch_dir = os.path.abspath(os.path.normpath(watch_dir))
         self.deep = deep
+        self.subfolders = resolve_subfolders(subfolders)
         self.event_callback = event_callback
         self.debounce_secs = debounce_secs or config.WATCHDOG_DEBOUNCE_SECONDS
         self._lock = threading.Lock()
@@ -67,7 +67,9 @@ class OrganizeEventHandler(FileSystemEventHandler):
         dirpath = dirname(path)
 
         parent_name = basename(dirpath)
-        if is_category_folder(parent_name):
+        # Skip anything already living under one of our category folders - both the
+        # folder itself and, with subfolders enabled, the extension folders inside it.
+        if is_category_folder(parent_name) or is_inside_category_folder(dirpath, self.watch_dir):
             return
 
         if not self.deep and dirpath != self.watch_dir:
@@ -109,7 +111,7 @@ class OrganizeEventHandler(FileSystemEventHandler):
             return
 
         category = get_category(ext_lower)
-        dest_dir = get_dest(ext_lower, self.watch_dir)
+        dest_dir = get_dest(ext_lower, self.watch_dir, subfolders=self.subfolders)
         ensure_dir(dest_dir)
 
         try:
@@ -161,7 +163,7 @@ class WatcherManager:
         self._active_observers = {}
         self._lock = threading.Lock()
 
-    def start(self, watch_dir, deep=False, event_callback=None):
+    def start(self, watch_dir, deep=False, event_callback=None, subfolders=None):
         if not HAS_WATCHDOG:
             return False, "Folder watching requires the 'watchdog' package. Install with: pip install watchdog (or pip install -e .[watcher])"
 
@@ -175,7 +177,7 @@ class WatcherManager:
             if not os.path.isdir(watch_path):
                 return False, "Directory does not exist: " + str(watch_path)
 
-            handler = OrganizeEventHandler(watch_path, deep=deep, event_callback=event_callback)
+            handler = OrganizeEventHandler(watch_path, deep=deep, event_callback=event_callback, subfolders=subfolders)
             observer = Observer()
             observer.schedule(handler, watch_path, recursive=deep)
             observer.start()
@@ -183,6 +185,7 @@ class WatcherManager:
                 "observer": observer,
                 "handler": handler,
                 "deep": deep,
+                "subfolders": handler.subfolders,
                 "started_at": time.strftime("%Y-%m-%d %H:%M:%S")
             }
             return True, "Started watching " + str(watch_path)
@@ -240,6 +243,7 @@ class WatcherManager:
                 {
                     "path": path,
                     "deep": info["deep"],
+                    "subfolders": info.get("subfolders", False),
                     "started_at": info["started_at"]
                 }
                 for path, info in self._active_observers.items()

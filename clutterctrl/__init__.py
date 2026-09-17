@@ -7,7 +7,7 @@ per-run audit logs, and 1-click rollback.
 
 Modules:
     config   - environment settings, paths, and category definitions
-    helpers  - filesystem utilities (drive detection, byte formatting, categorization)
+    helpers  - filesystem utilities (byte formatting, categorization, destination paths)
     cleaner  - core file-organizing logic (standard + deep scans)
     watcher  - background folder watcher using watchdog
     history  - per-run log parsing, undo/rollback and statistics

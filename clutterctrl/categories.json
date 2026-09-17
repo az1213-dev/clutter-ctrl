@@ -1,51 +1,113 @@
 {
 	"categories": {
 		"Images": [
-			".jpg", ".jpeg", ".jpe", ".png", ".webp", ".avif", ".heic", 
-			".heif", ".gif", ".svg", ".ico", ".tiff", ".tif", ".bmp", 
+			".jpg", ".jpeg", ".jpe", ".png", ".webp", ".avif", ".heic",
+			".heif", ".gif", ".svg", ".ico", ".tiff", ".tif", ".bmp",
 			".raw", ".cr2", ".nef", ".arw", ".dng"
 		],
 		"Videos": [
-			".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi", ".flv", 
+			".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi", ".flv",
 			".wmv", ".ts", ".mts", ".m2ts", ".3gp", ".prores"
 		],
 		"Audio": [
-			".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".opus", 
+			".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".opus",
 			".alac", ".aiff", ".wma", ".mid", ".midi"
 		],
 		"Documents": [
-			".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", 
-			".txt", ".md", ".markdown", ".rtf", ".odt", ".ods", ".odp", 
+			".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+			".txt", ".md", ".markdown", ".rtf", ".odt", ".ods", ".odp",
 			".csv", ".tsv", ".epub", ".mobi"
 		],
 		"Projects_And_Creative": [
-			".sb", ".sb2", ".sb3", ".sprite2", ".sprite3", ".rbxl", 
-			".rbxlx", ".rbxm", ".rbxmx", ".blend", ".stl", ".obj", 
-			".fbx", ".gcode", ".3mf", ".step", ".stp", ".glb", 
-			".gltf", ".psd", ".ai", ".fig", ".aep", ".prproj", 
+			".sb", ".sb2", ".sb3", ".sprite2", ".sprite3", ".rbxl",
+			".rbxlx", ".rbxm", ".rbxmx", ".blend", ".stl", ".obj",
+			".fbx", ".gcode", ".3mf", ".step", ".stp", ".glb",
+			".gltf", ".psd", ".ai", ".fig", ".aep", ".prproj",
 			".drp", ".als", ".flp", ".logicx", ".mkcd"
 		],
 		"Code_And_Web": [
-			".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", 
-			".scss", ".json", ".xml", ".yaml", ".yml", ".c", ".cpp", 
-			".h", ".cs", ".java", ".php", ".go", ".rs", ".rb", ".swift", 
+			".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css",
+			".scss", ".json", ".xml", ".yaml", ".yml", ".c", ".cpp",
+			".h", ".cs", ".java", ".php", ".go", ".rs", ".rb", ".swift",
 			".kt", ".sh", ".bash", ".zsh"
 		],
 		"Data_And_Databases": [
-			".sql", ".db", ".sqlite", ".sqlite3", ".parquet", ".arrow", 
+			".sql", ".db", ".sqlite", ".sqlite3", ".parquet", ".arrow",
 			".jsonl", ".ndjson", ".hdf5", ".h5"
 		],
 		"Archives": [
-			".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", 
+			".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2",
 			".xz", ".iso", ".dmg"
 		],
 		"Executables_And_Installers": [
-			".exe", ".msi", ".bat", ".cmd", ".ps1", ".app", ".pkg", 
+			".exe", ".msi", ".bat", ".cmd", ".ps1", ".app", ".pkg",
 			".deb", ".rpm", ".apk", ".aab", ".ipa"
 		],
 		"Fonts": [
 			".ttf", ".otf", ".woff", ".woff2", ".eot"
 		]
 	},
-	"misc_category": "Misc"
+	"misc_category": "Misc",
+	"subfolders_enabled": false,
+	"subcategories": {
+		"Images": {
+			"Photos": [".jpg", ".jpeg", ".jpe", ".png", ".webp", ".avif", ".heic", ".heif", ".bmp", ".tiff", ".tif"],
+			"Vector_And_Icons": [".svg", ".ico"],
+			"Animated": [".gif"],
+			"Raw": [".raw", ".cr2", ".nef", ".arw", ".dng"]
+		},
+		"Videos": {
+			"Movies": [".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi"],
+			"Legacy": [".flv", ".wmv", ".3gp"],
+			"Broadcast_And_Master": [".ts", ".mts", ".m2ts", ".prores"]
+		},
+		"Audio": {
+			"Compressed": [".mp3", ".aac", ".m4a", ".ogg", ".opus", ".wma"],
+			"Lossless": [".wav", ".flac", ".alac", ".aiff"],
+			"MIDI": [".mid", ".midi"]
+		},
+		"Documents": {
+			"PDFs": [".pdf"],
+			"Word": [".docx", ".doc", ".odt", ".rtf"],
+			"Spreadsheets": [".xlsx", ".xls", ".ods", ".csv", ".tsv"],
+			"Presentations": [".pptx", ".ppt", ".odp"],
+			"Text_And_Notes": [".txt", ".md", ".markdown"],
+			"eBooks": [".epub", ".mobi"]
+		},
+		"Projects_And_Creative": {
+			"Scratch": [".sb", ".sb2", ".sb3", ".sprite2", ".sprite3", ".mkcd"],
+			"Roblox": [".rbxl", ".rbxlx", ".rbxm", ".rbxmx"],
+			"3D_And_Print": [".blend", ".stl", ".obj", ".fbx", ".gcode", ".3mf", ".step", ".stp", ".glb", ".gltf"],
+			"Design": [".psd", ".ai", ".fig"],
+			"Video_Projects": [".aep", ".prproj", ".drp"],
+			"Audio_Projects": [".als", ".flp", ".logicx"]
+		},
+		"Code_And_Web": {
+			"Python": [".py"],
+			"Web": [".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".scss"],
+			"Config_And_Markup": [".json", ".xml", ".yaml", ".yml"],
+			"Systems": [".c", ".cpp", ".h", ".cs", ".java", ".go", ".rs", ".swift", ".kt"],
+			"Scripts": [".sh", ".bash", ".zsh", ".rb", ".php"]
+		},
+		"Data_And_Databases": {
+			"SQL": [".sql"],
+			"Databases": [".db", ".sqlite", ".sqlite3"],
+			"Columnar_And_Scientific": [".parquet", ".arrow", ".hdf5", ".h5"],
+			"JSON_Lines": [".jsonl", ".ndjson"]
+		},
+		"Archives": {
+			"Compressed": [".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz"],
+			"Disk_Images": [".iso", ".dmg"]
+		},
+		"Executables_And_Installers": {
+			"Windows": [".exe", ".msi", ".bat", ".cmd", ".ps1"],
+			"macOS": [".app", ".pkg"],
+			"Linux": [".deb", ".rpm"],
+			"Mobile": [".apk", ".aab", ".ipa"]
+		},
+		"Fonts": {
+			"Desktop": [".ttf", ".otf"],
+			"Web": [".woff", ".woff2", ".eot"]
+		}
+	}
 }
